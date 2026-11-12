@@ -97,11 +97,28 @@ fi
 echo "STATUS: Tier3 kit installed (tier3-core)"
 
 # 6. The client brains.
+G="/usr/bin/git -C $BRAINS_DIR"
 if [ -d "$BRAINS_DIR/.git" ]; then
-  /usr/bin/git -C "$BRAINS_DIR" pull --ff-only --quiet >/dev/null 2>&1
+  $G fetch --quiet origin >/dev/null 2>&1
+  REMOTE_VER="$($G show origin/main:.history-version 2>/dev/null | tr -d '[:space:]')"
+  LOCAL_VER="$($G config --get tier3.historyVersion 2>/dev/null)"
+  if [ -n "$REMOTE_VER" ] && [ "$REMOTE_VER" != "$LOCAL_VER" ]; then
+    # The brains history was cleaned for privacy: drop the old copy completely, keep nothing of it.
+    $G checkout --quiet -B main origin/main >/dev/null 2>&1
+    $G reset --quiet --hard origin/main >/dev/null 2>&1
+    $G stash clear >/dev/null 2>&1
+    for b in $($G for-each-ref --format='%(refname:short)' refs/heads); do [ "$b" = main ] || $G branch -D "$b" >/dev/null 2>&1; done
+    $G reflog expire --expire=now --all >/dev/null 2>&1
+    $G gc --quiet --prune=now >/dev/null 2>&1
+    $G config tier3.historyVersion "$REMOTE_VER"
+  else
+    $G pull --ff-only --quiet >/dev/null 2>&1
+  fi
 else
   "$GH" repo clone "$ORG/$BRAINS" "$BRAINS_DIR" -- --quiet >/dev/null 2>&1 || fail "could not download the client brains"
+  V="$($G show HEAD:.history-version 2>/dev/null | tr -d '[:space:]')"; [ -n "$V" ] && $G config tier3.historyVersion "$V"
 fi
+$G config core.hooksPath tools/githooks >/dev/null 2>&1
 echo "STATUS: client brains at $BRAINS_DIR"
 
 GUIDE="$(ls -d "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/marketplaces/tier3/plugins/tier3-core/skills/tier3-setup/SKILL.md 2>/dev/null | head -1)"
