@@ -66,11 +66,20 @@ fi
 LOGIN="$("$GH" api user --jq .login 2>/dev/null)"
 echo "STATUS: signed in to GitHub as $LOGIN"
 
-# 4. Access to the Tier3 repos (needs the Tier3-Media invite accepted).
+# 4. Access to the Tier3 repos. A pending Tier3-Media invite is accepted here, so nobody clicks Join.
 if ! "$GH" api "repos/$ORG/$KIT" --jq .name >/dev/null 2>&1; then
-  "$GH" api user/memberships/orgs --jq '.[] | select(.state=="pending") | .organization.login' 2>/dev/null | grep -qx "$ORG" \
-    && echo "SAY: You have a Tier3-Media invite waiting. Open https://github.com/orgs/$ORG/invitation and click Join, then tell me." \
-    || echo "SAY: Your GitHub account ($LOGIN) is not in Tier3 Media's GitHub yet. Send your GitHub username, $LOGIN, to Gustavo Ganem or Rick Diaz. I can draft that Slack message for you. Once they add you, I'll finish."
+  if "$GH" api user/memberships/orgs --jq '.[] | select(.state=="pending") | .organization.login' 2>/dev/null | grep -qx "$ORG"; then
+    "$GH" api -X PATCH "user/memberships/orgs/$ORG" -f state=active >/dev/null 2>&1 && echo "STATUS: accepted the $ORG invite"
+    sleep 2
+  fi
+fi
+if ! "$GH" api "repos/$ORG/$KIT" --jq .name >/dev/null 2>&1; then
+  if "$GH" api user/memberships/orgs --jq '.[] | select(.state=="pending") | .organization.login' 2>/dev/null | grep -qx "$ORG"; then
+    open "https://github.com/orgs/$ORG/invitation"
+    echo "SAY: One more click: GitHub just opened your Tier3 Media invite. Click Join, then tell me."
+  else
+    echo "SAY: You're signed in to GitHub as $LOGIN, but Tier3 Media hasn't added you yet. I've drafted a message to Gustavo Ganem for you to send. I'll finish the moment they add you."
+  fi
   echo "STATUS: NO_ACCESS login=$LOGIN"
   exit 20
 fi
